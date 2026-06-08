@@ -11,7 +11,7 @@ final class AppSettings: ObservableObject {
     @AppStorage("autoRender") var autoRender: Bool = true
     @AppStorage("renderDelay") var renderDelay: Double = 0.4
     @AppStorage("editorFontSize") var editorFontSize: Double = 13
-    @AppStorage("wrapLines") var wrapLines: Bool = false
+    @AppStorage("wrapLines") var wrapLines: Bool = true
     @AppStorage("showLineNumbers") var showLineNumbers: Bool = true
     @AppStorage("previewBackground") var previewBackground: String = "auto" // auto | white | dark | transparent
     @AppStorage("exportScale") var exportScale: Double = 2

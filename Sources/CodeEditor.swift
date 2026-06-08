@@ -11,20 +11,43 @@ struct CodeEditor: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        // Use AppKit's own factory so the scroll view ↔ text view sizing is
-        // wired up correctly (a hand-rolled stack left the text view collapsed
-        // and nothing drew). Touching `layoutManager` forces TextKit 1, which
-        // the line-number ruler and our highlighting rely on.
-        let scrollView = NSTextView.scrollableTextView()
+        // Canonical TextKit 1 stack. We build the storage/layout/container
+        // ourselves: scrollableTextView() sizes correctly but forcing it to
+        // TextKit 1 (needed for the ruler) broke glyph drawing. An explicit
+        // NSLayoutManager both draws glyphs reliably and powers the ruler.
+        let scrollView = NSScrollView()
         scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = true
+        scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
 
-        guard let textView = scrollView.documentView as? NSTextView else {
-            return scrollView
-        }
-        _ = textView.layoutManager // force TextKit 1
+        let contentSize = scrollView.contentSize
+        let storage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        storage.addLayoutManager(layoutManager)
+        let container = NSTextContainer(size: NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        layoutManager.addTextContainer(container)
+
+        let textView = NSTextView(frame: NSRect(origin: .zero, size: contentSize), textContainer: container)
+        textView.autoresizingMask = [.width]
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.minSize = NSSize(width: 0, height: contentSize.height)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        // Inside SwiftUI's layer-backed hierarchy the text view's layer content
+        // wasn't being refreshed, so glyphs never composited on screen even
+        // though drawRect produced them. Force the layer to redraw on display
+        // and stop the clip view from caching a stale (empty) document.
+        textView.layerContentsRedrawPolicy = .onSetNeedsDisplay
+        scrollView.documentView = textView
+        scrollView.contentView.copiesOnScroll = false
+        // Force the text view + clip subtree to render through drawRect into a
+        // single layer. Without this, in SwiftUI's layer-backed hierarchy the
+        // text view's glyphs are drawn to a bitmap on demand but never make it
+        // into the on-screen layer, leaving the editor blank.
+        scrollView.wantsLayer = true
+        scrollView.canDrawSubviewsIntoLayer = true
 
         textView.delegate = context.coordinator
         textView.isRichText = false
@@ -41,6 +64,7 @@ struct CodeEditor: NSViewRepresentable {
         textView.backgroundColor = MermaidHighlighter.backgroundColor
         textView.textColor = MermaidHighlighter.baseColor
         textView.insertionPointColor = MermaidHighlighter.baseColor
+        textView.selectedTextAttributes = [.backgroundColor: MermaidHighlighter.selectionColor]
         textView.font = NSFont.monospacedSystemFont(ofSize: CGFloat(fontSize), weight: .regular)
 
         textView.string = text
@@ -97,19 +121,25 @@ struct CodeEditor: NSViewRepresentable {
         }
 
         private func applyWrap(_ wrap: Bool, to tv: NSTextView) {
-            guard let container = tv.textContainer else { return }
+            guard let container = tv.textContainer, let scroll = tv.enclosingScrollView else { return }
+            let visibleWidth = scroll.contentSize.width
             if wrap {
                 container.widthTracksTextView = true
-                container.containerSize = NSSize(width: tv.bounds.width, height: CGFloat.greatestFiniteMagnitude)
+                container.containerSize = NSSize(width: visibleWidth, height: CGFloat.greatestFiniteMagnitude)
                 tv.isHorizontallyResizable = false
-                tv.enclosingScrollView?.hasHorizontalScroller = false
+                tv.autoresizingMask = [.width]
+                scroll.hasHorizontalScroller = false
+                tv.setFrameSize(NSSize(width: visibleWidth, height: tv.frame.height))
             } else {
                 container.widthTracksTextView = false
                 container.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
                 tv.isHorizontallyResizable = true
-                tv.enclosingScrollView?.hasHorizontalScroller = true
+                tv.autoresizingMask = [.width, .height]
                 tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+                scroll.hasHorizontalScroller = true
             }
+            tv.sizeToFit()
+            tv.needsDisplay = true
         }
 
         func textDidChange(_ notification: Notification) {
@@ -140,6 +170,9 @@ struct CodeEditor: NSViewRepresentable {
             guard let tv = textView, let storage = tv.textStorage else { return }
             let font = NSFont.monospacedSystemFont(ofSize: CGFloat(currentFontSize > 0 ? currentFontSize : parent.fontSize), weight: .regular)
             MermaidHighlighter.apply(to: storage, font: font)
+            if let container = tv.textContainer {
+                tv.layoutManager?.ensureLayout(for: container)
+            }
             tv.needsDisplay = true
         }
     }
@@ -160,14 +193,18 @@ enum MermaidHighlighter {
         "direction","click","style","classDef","linkStyle","showData"
     ]
 
-    // Explicit, appearance-independent palette tuned for a light editor
-    // background so tokens are always readable regardless of system mode.
-    static let baseColor = NSColor(srgbRed: 0.13, green: 0.14, blue: 0.16, alpha: 1)      // near-black
-    static let backgroundColor = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)         // white
-
-    private static func c(_ r: Double, _ g: Double, _ b: Double) -> NSColor {
-        NSColor(srgbRed: r, green: g, blue: b, alpha: 1)
+    // Tokyo Night palette — a dark editor theme with high-contrast tokens.
+    static func hex(_ v: Int) -> NSColor {
+        NSColor(srgbRed: Double((v >> 16) & 0xff) / 255.0,
+                green: Double((v >> 8) & 0xff) / 255.0,
+                blue: Double(v & 0xff) / 255.0,
+                alpha: 1)
     }
+    static let backgroundColor = hex(0x1a1b26)   // editor background
+    static let baseColor       = hex(0xc0caf5)   // default text (light lavender)
+    static let gutterBackground = hex(0x16161e)  // line-number gutter
+    static let gutterText       = hex(0x565f89)  // line numbers
+    static let selectionColor   = hex(0x283457)  // selection highlight
 
     private static let rules: [Rule] = {
         func rx(_ p: String, _ opts: NSRegularExpression.Options = []) -> NSRegularExpression {
@@ -175,18 +212,18 @@ enum MermaidHighlighter {
         }
         let kw = "\\b(" + keywords.joined(separator: "|") + ")\\b"
         return [
-            // Comments
-            Rule(regex: rx("%%.*$", [.anchorsMatchLines]), color: c(0.42, 0.46, 0.51)),
-            // Keywords
-            Rule(regex: rx(kw), color: c(0.49, 0.18, 0.74)),
-            // Arrows / links
-            Rule(regex: rx("(-{1,3}>|={1,3}>|-\\.->|--x|--o|<-{1,3}|\\.\\.>|==>|--|-\\.-|o--o|x--x|\\|)"), color: c(0.78, 0.15, 0.47)),
-            // Strings
-            Rule(regex: rx("\"[^\"]*\""), color: c(0.69, 0.13, 0.13)),
-            // Node text in brackets/braces/parens
-            Rule(regex: rx("[\\[\\]{}()]"), color: c(0.0, 0.45, 0.6)),
-            // Numbers
-            Rule(regex: rx("\\b\\d+(\\.\\d+)?\\b"), color: c(0.6, 0.36, 0.0))
+            // Comments — muted blue-grey
+            Rule(regex: rx("%%.*$", [.anchorsMatchLines]), color: hex(0x565f89)),
+            // Keywords — purple
+            Rule(regex: rx(kw), color: hex(0xbb9af7)),
+            // Arrows / links — cyan
+            Rule(regex: rx("(-{1,3}>|={1,3}>|-\\.->|--x|--o|<-{1,3}|\\.\\.>|==>|--|-\\.-|o--o|x--x|\\|)"), color: hex(0x89ddff)),
+            // Strings — green
+            Rule(regex: rx("\"[^\"]*\""), color: hex(0x9ece6a)),
+            // Node delimiters — blue
+            Rule(regex: rx("[\\[\\]{}()]"), color: hex(0x7aa2f7)),
+            // Numbers — orange
+            Rule(regex: rx("\\b\\d+(\\.\\d+)?\\b"), color: hex(0xff9e64))
         ]
     }()
 
@@ -229,8 +266,7 @@ final class LineNumberRulerView: NSRulerView {
               let layoutManager = textView.layoutManager,
               let container = textView.textContainer else { return }
 
-        let bg = NSColor.textBackgroundColor.blended(withFraction: 0.04, of: .labelColor) ?? .textBackgroundColor
-        bg.setFill()
+        MermaidHighlighter.gutterBackground.setFill()
         rect.fill()
 
         let content = textView.string as NSString
@@ -240,7 +276,7 @@ final class LineNumberRulerView: NSRulerView {
 
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedSystemFont(ofSize: max(9, font.pointSize - 2), weight: .regular),
-            .foregroundColor: NSColor.tertiaryLabelColor
+            .foregroundColor: MermaidHighlighter.gutterText
         ]
 
         // Determine starting line number
