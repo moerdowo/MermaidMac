@@ -20,7 +20,6 @@ struct CodeEditor: NSViewRepresentable {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
-        scrollView.appearance = NSAppearance(named: .aqua)
 
         guard let textView = scrollView.documentView as? NSTextView else {
             return scrollView
@@ -141,6 +140,7 @@ struct CodeEditor: NSViewRepresentable {
             guard let tv = textView, let storage = tv.textStorage else { return }
             let font = NSFont.monospacedSystemFont(ofSize: CGFloat(currentFontSize > 0 ? currentFontSize : parent.fontSize), weight: .regular)
             MermaidHighlighter.apply(to: storage, font: font)
+            tv.needsDisplay = true
         }
     }
 }
