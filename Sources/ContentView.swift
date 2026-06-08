@@ -238,11 +238,24 @@ struct ContentView: View {
     // MARK: - Template insertion
 
     private func insert(template: String) {
-        if document.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            document.text = template
-        } else {
-            document.text += "\n\n" + template
+        // A Mermaid file holds a single diagram, so a template replaces the
+        // current content rather than appending (appending two diagram types
+        // into one document is invalid Mermaid and fails to render).
+        let current = document.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isReplaceable = current.isEmpty
+            || document.text == MermaidTemplate.welcome
+            || current.hasPrefix("%% Welcome")
+
+        if !isReplaceable {
+            let alert = NSAlert()
+            alert.messageText = "Replace the current diagram?"
+            alert.informativeText = "Inserting a template will replace the editor contents. This can be undone."
+            alert.addButton(withTitle: "Replace")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
+
+        document.text = template
         scheduleRender(immediate: true)
     }
 

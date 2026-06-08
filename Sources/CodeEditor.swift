@@ -18,7 +18,18 @@ struct CodeEditor: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.appearance = NSAppearance(named: .aqua)
 
-        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 400))
+        // Build an explicit TextKit 1 stack. The default NSTextView uses
+        // TextKit 2, whose layout manager does not reliably draw glyphs after
+        // we mutate attributes directly on textStorage — which left the editor
+        // visually empty. An explicit NSLayoutManager guarantees TextKit 1.
+        let storage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        storage.addLayoutManager(layoutManager)
+        let container = NSTextContainer(size: NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        layoutManager.addTextContainer(container)
+
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 400), textContainer: container)
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.allowsUndo = true
