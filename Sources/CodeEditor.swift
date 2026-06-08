@@ -17,7 +17,7 @@ struct CodeEditor: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
 
-        let textView = NSTextView()
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 400))
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.allowsUndo = true
@@ -30,6 +30,18 @@ struct CodeEditor: NSViewRepresentable {
         textView.usesFindBar = true
         textView.textContainerInset = NSSize(width: 6, height: 8)
         textView.backgroundColor = NSColor.textBackgroundColor
+        textView.textColor = NSColor.textColor
+        textView.font = NSFont.monospacedSystemFont(ofSize: CGFloat(fontSize), weight: .regular)
+
+        // Critical sizing so the text view actually lays out and shows content.
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.containerSize = NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
+
         textView.string = text
 
         context.coordinator.textView = textView
