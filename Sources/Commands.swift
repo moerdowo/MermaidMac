@@ -36,6 +36,13 @@ struct MermaidCommands: Commands {
     @FocusedValue(\.previewActions) private var actions
 
     var body: some Commands {
+        CommandGroup(after: .saveItem) {
+            Button("Save As…") {
+                NSApp.sendAction(Selector(("saveDocumentAs:")), to: nil, from: nil)
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+        }
+
         CommandGroup(after: .importExport) {
             Divider()
             Button("Export as SVG…") { actions?.exportSVG() }
