@@ -25,6 +25,8 @@ targets:
         buildPhase: resources
       - path: Sources/Resources/mermaid.min.js
         buildPhase: resources
+      - path: Sources/Resources/AppIcon.icns
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.moerdowo.MermaidMac
@@ -38,6 +40,7 @@ targets:
     info:
       path: Sources/Info.plist
       properties:
+        CFBundleIconFile: AppIcon
         CFBundleDocumentTypes:
           - CFBundleTypeName: Mermaid Diagram
             CFBundleTypeRole: Editor
