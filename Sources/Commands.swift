@@ -1,4 +1,13 @@
 import SwiftUI
+import AppKit
+
+/// Drives the focused NSTextView's find bar by sending the standard text-finder
+/// action down the responder chain with the appropriate tag.
+private func textFinder(_ action: NSTextFinder.Action) {
+    let item = NSMenuItem()
+    item.tag = Int(action.rawValue)
+    NSApp.sendAction(#selector(NSTextView.performTextFinderAction(_:)), to: nil, from: item)
+}
 
 struct PreviewActions {
     var zoomIn: () -> Void
@@ -39,6 +48,20 @@ struct MermaidCommands: Commands {
                 .disabled(actions == nil)
             Button("Copy SVG Code") { actions?.copySVG() }
                 .disabled(actions == nil)
+        }
+
+        CommandGroup(after: .textEditing) {
+            Divider()
+            Button("Find…") { textFinder(.showFindInterface) }
+                .keyboardShortcut("f", modifiers: [.command])
+            Button("Find and Replace…") { textFinder(.showReplaceInterface) }
+                .keyboardShortcut("f", modifiers: [.command, .option])
+            Button("Find Next") { textFinder(.nextMatch) }
+                .keyboardShortcut("g", modifiers: [.command])
+            Button("Find Previous") { textFinder(.previousMatch) }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+            Button("Use Selection for Find") { textFinder(.setSearchString) }
+                .keyboardShortcut("e", modifiers: [.command])
         }
 
         CommandMenu("Diagram") {
