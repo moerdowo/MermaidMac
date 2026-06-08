@@ -136,10 +136,13 @@
       } catch (err) {
         if (seq !== renderSeq) return;
         const msg = (err && (err.str || err.message)) || String(err);
-        errorText.textContent = msg;
-        errorBox.style.display = 'flex';
-        // Clean up any leftover error node mermaid injects into body
-        const orphan = document.getElementById('dmmd-' + seq) || document.querySelector('#mmd-' + seq);
+        // Non-destructive: keep the last good diagram on screen. Do NOT show a
+        // full-screen error overlay — the host app surfaces a small, dismissible
+        // banner instead. Just clean up any partial node Mermaid injected.
+        errorBox.style.display = 'none';
+        const orphan = document.getElementById('dmmd-' + seq)
+          || document.getElementById('mmd-' + seq)
+          || document.querySelector('[id^="dmmd-"]');
         if (orphan) orphan.remove();
         post({ type: 'error', message: msg });
       }

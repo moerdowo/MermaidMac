@@ -11,25 +11,22 @@ struct CodeEditor: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
+        // Use AppKit's own factory so the scroll view ↔ text view sizing is
+        // wired up correctly (a hand-rolled stack left the text view collapsed
+        // and nothing drew). Touching `layoutManager` forces TextKit 1, which
+        // the line-number ruler and our highlighting rely on.
+        let scrollView = NSTextView.scrollableTextView()
+        scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
-        scrollView.borderType = .noBorder
         scrollView.appearance = NSAppearance(named: .aqua)
 
-        // Build an explicit TextKit 1 stack. The default NSTextView uses
-        // TextKit 2, whose layout manager does not reliably draw glyphs after
-        // we mutate attributes directly on textStorage — which left the editor
-        // visually empty. An explicit NSLayoutManager guarantees TextKit 1.
-        let storage = NSTextStorage()
-        let layoutManager = NSLayoutManager()
-        storage.addLayoutManager(layoutManager)
-        let container = NSTextContainer(size: NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
-        container.widthTracksTextView = true
-        layoutManager.addTextContainer(container)
+        guard let textView = scrollView.documentView as? NSTextView else {
+            return scrollView
+        }
+        _ = textView.layoutManager // force TextKit 1
 
-        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 400), textContainer: container)
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.allowsUndo = true
@@ -41,28 +38,15 @@ struct CodeEditor: NSViewRepresentable {
         textView.isGrammarCheckingEnabled = false
         textView.usesFindBar = true
         textView.textContainerInset = NSSize(width: 6, height: 8)
-        // Pin to a fixed light theme so token colors are always high-contrast,
-        // regardless of system dark/light mode.
-        textView.appearance = NSAppearance(named: .aqua)
         textView.drawsBackground = true
         textView.backgroundColor = MermaidHighlighter.backgroundColor
         textView.textColor = MermaidHighlighter.baseColor
         textView.insertionPointColor = MermaidHighlighter.baseColor
         textView.font = NSFont.monospacedSystemFont(ofSize: CGFloat(fontSize), weight: .regular)
 
-        // Critical sizing so the text view actually lays out and shows content.
-        textView.minSize = NSSize(width: 0, height: 0)
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.containerSize = NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer?.widthTracksTextView = true
-
         textView.string = text
 
         context.coordinator.textView = textView
-        scrollView.documentView = textView
 
         let ruler = LineNumberRulerView(textView: textView)
         scrollView.verticalRulerView = ruler

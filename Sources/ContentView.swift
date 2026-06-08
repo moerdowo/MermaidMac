@@ -75,9 +75,11 @@ struct ContentView: View {
                 Spacer(minLength: 0)
             }
             .padding(10)
-            .background(Color.red.opacity(0.85))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(.red.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
+            .shadow(radius: 6, y: 2)
             .padding(10)
+            .frame(maxWidth: 520)
+            .allowsHitTesting(false)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
