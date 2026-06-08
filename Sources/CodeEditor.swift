@@ -16,6 +16,7 @@ struct CodeEditor: NSViewRepresentable {
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
+        scrollView.appearance = NSAppearance(named: .aqua)
 
         let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 400))
         textView.delegate = context.coordinator
@@ -29,8 +30,13 @@ struct CodeEditor: NSViewRepresentable {
         textView.isGrammarCheckingEnabled = false
         textView.usesFindBar = true
         textView.textContainerInset = NSSize(width: 6, height: 8)
-        textView.backgroundColor = NSColor.textBackgroundColor
-        textView.textColor = NSColor.textColor
+        // Pin to a fixed light theme so token colors are always high-contrast,
+        // regardless of system dark/light mode.
+        textView.appearance = NSAppearance(named: .aqua)
+        textView.drawsBackground = true
+        textView.backgroundColor = MermaidHighlighter.backgroundColor
+        textView.textColor = MermaidHighlighter.baseColor
+        textView.insertionPointColor = MermaidHighlighter.baseColor
         textView.font = NSFont.monospacedSystemFont(ofSize: CGFloat(fontSize), weight: .regular)
 
         // Critical sizing so the text view actually lays out and shows content.
@@ -159,6 +165,15 @@ enum MermaidHighlighter {
         "direction","click","style","classDef","linkStyle","showData"
     ]
 
+    // Explicit, appearance-independent palette tuned for a light editor
+    // background so tokens are always readable regardless of system mode.
+    static let baseColor = NSColor(srgbRed: 0.13, green: 0.14, blue: 0.16, alpha: 1)      // near-black
+    static let backgroundColor = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)         // white
+
+    private static func c(_ r: Double, _ g: Double, _ b: Double) -> NSColor {
+        NSColor(srgbRed: r, green: g, blue: b, alpha: 1)
+    }
+
     private static let rules: [Rule] = {
         func rx(_ p: String, _ opts: NSRegularExpression.Options = []) -> NSRegularExpression {
             try! NSRegularExpression(pattern: p, options: opts)
@@ -166,17 +181,17 @@ enum MermaidHighlighter {
         let kw = "\\b(" + keywords.joined(separator: "|") + ")\\b"
         return [
             // Comments
-            Rule(regex: rx("%%.*$", [.anchorsMatchLines]), color: NSColor.systemGray),
+            Rule(regex: rx("%%.*$", [.anchorsMatchLines]), color: c(0.42, 0.46, 0.51)),
             // Keywords
-            Rule(regex: rx(kw), color: NSColor.systemPurple),
+            Rule(regex: rx(kw), color: c(0.49, 0.18, 0.74)),
             // Arrows / links
-            Rule(regex: rx("(-{1,3}>|={1,3}>|-\\.->|--x|--o|<-{1,3}|\\.\\.>|==>|--|-\\.-|o--o|x--x|\\|)"), color: NSColor.systemPink),
+            Rule(regex: rx("(-{1,3}>|={1,3}>|-\\.->|--x|--o|<-{1,3}|\\.\\.>|==>|--|-\\.-|o--o|x--x|\\|)"), color: c(0.78, 0.15, 0.47)),
             // Strings
-            Rule(regex: rx("\"[^\"]*\""), color: NSColor.systemRed),
+            Rule(regex: rx("\"[^\"]*\""), color: c(0.69, 0.13, 0.13)),
             // Node text in brackets/braces/parens
-            Rule(regex: rx("[\\[\\]{}()]"), color: NSColor.systemTeal),
+            Rule(regex: rx("[\\[\\]{}()]"), color: c(0.0, 0.45, 0.6)),
             // Numbers
-            Rule(regex: rx("\\b\\d+(\\.\\d+)?\\b"), color: NSColor.systemOrange)
+            Rule(regex: rx("\\b\\d+(\\.\\d+)?\\b"), color: c(0.6, 0.36, 0.0))
         ]
     }()
 
@@ -186,7 +201,7 @@ enum MermaidHighlighter {
         storage.beginEditing()
         storage.setAttributes([
             .font: font,
-            .foregroundColor: NSColor.textColor
+            .foregroundColor: baseColor
         ], range: full)
         for rule in rules {
             rule.regex.enumerateMatches(in: text, options: [], range: full) { match, _, _ in
