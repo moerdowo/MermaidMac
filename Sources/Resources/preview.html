@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root { color-scheme: light dark; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg, transparent);
+  }
+  #viewport {
+    position: absolute; inset: 0;
+    overflow: hidden;
+    cursor: grab;
+  }
+  #viewport.panning { cursor: grabbing; }
+  #stage {
+    position: absolute; top: 0; left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+  #stage svg { display: block; max-width: none !important; height: auto; }
+  #error {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column;
+    padding: 24px;
+    box-sizing: border-box;
+    overflow: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    color: #c0392b;
+    background: rgba(192,57,43,0.06);
+  }
+  #error h3 { margin: 0 0 8px; font-size: 14px; }
+  #error pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
+  #empty {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    color: #888; font-size: 14px;
+  }
+  body.bg-white { --bg: #ffffff; }
+  body.bg-dark { --bg: #1e1e1e; }
+  body.bg-transparent { --bg: transparent; }
+</style>
+</head>
+<body>
+  <div id="viewport">
+    <div id="stage"></div>
+  </div>
+  <div id="error"><h3>Diagram error</h3><pre id="error-text"></pre></div>
+  <div id="empty">Nothing to preview</div>
+
+  <script src="mermaid.min.js"></script>
+  <script>
+  (function () {
+    const viewport = document.getElementById('viewport');
+    const stage = document.getElementById('stage');
+    const errorBox = document.getElementById('error');
+    const errorText = document.getElementById('error-text');
+    const emptyBox = document.getElementById('empty');
+
+    let scale = 1, tx = 0, ty = 0;
+    let renderSeq = 0;
+    let lastSVGSize = { w: 0, h: 0 };
+    let currentTheme = 'default';
+
+    function post(msg) {
+      try { window.webkit.messageHandlers.bridge.postMessage(msg); } catch (e) {}
+    }
+
+    function applyTransform() {
+      stage.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+      post({ type: 'zoom', scale: scale });
+    }
+
+    function initMermaid(theme) {
+      currentTheme = theme || 'default';
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: currentTheme,
+        securityLevel: 'loose',
+        fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+        flowchart: { useMaxWidth: false, htmlLabels: true },
+        sequence: { useMaxWidth: false },
+        gantt: { useMaxWidth: false }
+      });
+    }
+
+    window.setBackground = function (mode) {
+      document.body.classList.remove('bg-white', 'bg-dark', 'bg-transparent');
+      if (mode === 'white') document.body.classList.add('bg-white');
+      else if (mode === 'dark') document.body.classList.add('bg-dark');
+      else if (mode === 'transparent') document.body.classList.add('bg-transparent');
+    };
+
+    window.renderDiagram = async function (code, theme, bg) {
+      const seq = ++renderSeq;
+      if (bg) window.setBackground(bg);
+      if (theme && theme !== currentTheme) initMermaid(theme);
+
+      const trimmed = (code || '').trim();
+      if (!trimmed) {
+        stage.innerHTML = '';
+        errorBox.style.display = 'none';
+        emptyBox.style.display = 'flex';
+        post({ type: 'empty' });
+        return;
+      }
+      emptyBox.style.display = 'none';
+
+      try {
+        const id = 'mmd-' + seq;
+        const { svg } = await mermaid.render(id, trimmed);
+        if (seq !== renderSeq) return; // a newer render superseded this one
+        stage.innerHTML = svg;
+        errorBox.style.display = 'none';
+
+        const svgEl = stage.querySelector('svg');
+        let w = 0, h = 0;
+        if (svgEl) {
+          const bbox = svgEl.getBBox ? svgEl.getBBox() : null;
+          w = svgEl.viewBox && svgEl.viewBox.baseVal && svgEl.viewBox.baseVal.width
+              ? svgEl.viewBox.baseVal.width : (bbox ? bbox.width : svgEl.clientWidth);
+          h = svgEl.viewBox && svgEl.viewBox.baseVal && svgEl.viewBox.baseVal.height
+              ? svgEl.viewBox.baseVal.height : (bbox ? bbox.height : svgEl.clientHeight);
+          svgEl.style.width = w + 'px';
+          svgEl.style.height = h + 'px';
+        }
+        lastSVGSize = { w: w, h: h };
+        post({ type: 'rendered', width: w, height: h });
+      } catch (err) {
+        if (seq !== renderSeq) return;
+        const msg = (err && (err.str || err.message)) || String(err);
+        errorText.textContent = msg;
+        errorBox.style.display = 'flex';
+        // Clean up any leftover error node mermaid injects into body
+        const orphan = document.getElementById('dmmd-' + seq) || document.querySelector('#mmd-' + seq);
+        if (orphan) orphan.remove();
+        post({ type: 'error', message: msg });
+      }
+    };
+
+    // ---- Zoom & pan ----
+    window.zoomBy = function (factor, cx, cy) {
+      const rect = viewport.getBoundingClientRect();
+      if (cx === undefined) cx = rect.width / 2;
+      if (cy === undefined) cy = rect.height / 2;
+      const newScale = Math.min(8, Math.max(0.05, scale * factor));
+      const ratio = newScale / scale;
+      tx = cx - (cx - tx) * ratio;
+      ty = cy - (cy - ty) * ratio;
+      scale = newScale;
+      applyTransform();
+    };
+    window.zoomIn = function () { window.zoomBy(1.2); };
+    window.zoomOut = function () { window.zoomBy(1 / 1.2); };
+    window.setZoom = function (s) { window.zoomBy(s / scale); };
+
+    window.resetZoom = function () {
+      scale = 1; tx = 0; ty = 0; applyTransform();
+    };
+
+    window.fitToWindow = function () {
+      const rect = viewport.getBoundingClientRect();
+      const w = lastSVGSize.w || stage.clientWidth;
+      const h = lastSVGSize.h || stage.clientHeight;
+      if (!w || !h) { window.resetZoom(); return; }
+      const pad = 32;
+      const s = Math.min((rect.width - pad) / w, (rect.height - pad) / h, 4);
+      scale = Math.max(0.05, s);
+      tx = (rect.width - w * scale) / 2;
+      ty = (rect.height - h * scale) / 2;
+      applyTransform();
+    };
+
+    // Wheel: zoom with cmd/ctrl, otherwise pan
+    viewport.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      if (e.metaKey || e.ctrlKey) {
+        const rect = viewport.getBoundingClientRect();
+        const factor = Math.pow(1.0015, -e.deltaY);
+        window.zoomBy(factor, e.clientX - rect.left, e.clientY - rect.top);
+      } else {
+        tx -= e.deltaX; ty -= e.deltaY;
+        applyTransform();
+      }
+    }, { passive: false });
+
+    // Drag to pan
+    let dragging = false, lastX = 0, lastY = 0;
+    viewport.addEventListener('mousedown', function (e) {
+      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      viewport.classList.add('panning');
+    });
+    window.addEventListener('mousemove', function (e) {
+      if (!dragging) return;
+      tx += e.clientX - lastX; ty += e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      applyTransform();
+    });
+    window.addEventListener('mouseup', function () {
+      dragging = false; viewport.classList.remove('panning');
+    });
+    viewport.addEventListener('dblclick', function () { window.fitToWindow(); });
+
+    // ---- Export ----
+    window.getSVG = function () {
+      const svgEl = stage.querySelector('svg');
+      if (!svgEl) return '';
+      const clone = svgEl.cloneNode(true);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      return '<?xml version="1.0" encoding="UTF-8"?>\\n' + clone.outerHTML;
+    };
+
+    window.getPNG = function (exportScale) {
+      return new Promise(function (resolve) {
+        const svgEl = stage.querySelector('svg');
+        if (!svgEl) { resolve(''); return; }
+        const w = lastSVGSize.w || svgEl.clientWidth || 800;
+        const h = lastSVGSize.h || svgEl.clientHeight || 600;
+        const s = exportScale || 2;
+        const clone = svgEl.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        clone.setAttribute('width', w);
+        clone.setAttribute('height', h);
+        const data = new XMLSerializer().serializeToString(clone);
+        const img = new Image();
+        const svg64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(data)));
+        img.onload = function () {
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(w * s));
+          canvas.height = Math.max(1, Math.round(h * s));
+          const ctx = canvas.getContext('2d');
+          const bgClass = document.body.className;
+          if (bgClass.indexOf('bg-white') >= 0) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height); }
+          else if (bgClass.indexOf('bg-dark') >= 0) { ctx.fillStyle = '#1e1e1e'; ctx.fillRect(0,0,canvas.width,canvas.height); }
+          ctx.setTransform(s, 0, 0, s, 0, 0);
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        };
+        img.onerror = function () { resolve(''); };
+        img.src = svg64;
+      });
+    };
+
+    initMermaid('default');
+    post({ type: 'ready' });
+  })();
+  </script>
+</body>
+</html>

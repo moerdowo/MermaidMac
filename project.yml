@@ -1,0 +1,56 @@
+name: MermaidMac
+options:
+  bundleIdPrefix: com.moerdowo
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_LANGUAGE: en
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_IDENTITY: "-"
+targets:
+  MermaidMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        excludes:
+          - "Info.plist"
+          - "Resources/**"
+      - path: Sources/Resources/preview.html
+        buildPhase: resources
+      - path: Sources/Resources/mermaid.min.js
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.moerdowo.MermaidMac
+        PRODUCT_NAME: MermaidMac
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 moerdowo"
+        INFOPLIST_KEY_CFBundleDisplayName: MermaidMac
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        COMBINE_HIDPI_IMAGES: YES
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Mermaid Diagram
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
+            LSItemContentTypes:
+              - com.moerdowo.mermaid
+              - net.daringfireball.markdown
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.moerdowo.mermaid
+            UTTypeDescription: Mermaid Diagram
+            UTTypeConformsTo:
+              - public.plain-text
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - mmd
+                - mermaid
