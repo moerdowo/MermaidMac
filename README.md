@@ -92,3 +92,9 @@ Sources/
 curl -sL https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js \
   -o Sources/Resources/mermaid.min.js
 ```
+
+## License
+
+MermaidMac is released under the [MIT License](LICENSE).
+
+[Mermaid](https://mermaid.js.org) itself is bundled under its own MIT License.
