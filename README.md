@@ -8,6 +8,8 @@ A native macOS [Mermaid](https://mermaid.js.org) diagram editor with a dual-pane
 live editor + preview. Edit Mermaid syntax on the left, see the rendered diagram
 on the right — instantly, fully offline.
 
+![MermaidMac — editor and live preview](docs/screenshot.png)
+
 ## Download
 
 Grab the latest `.dmg` from the [Releases page](https://github.com/moerdowo/MermaidMac/releases),
